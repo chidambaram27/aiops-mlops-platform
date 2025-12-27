@@ -7,7 +7,7 @@ vpc_cidr           = "10.0.0.0/16"
 availability_zones = ["us-east-1a", "us-east-1b"]
 
 # EKS Configuration
-eks_cluster_version     = "1.33"
+eks_cluster_version = "1.33"
 
 eks_node_groups = {
   main = {
@@ -22,9 +22,9 @@ eks_node_groups = {
   }
   loadtest = {
     instance_types = ["t3.small"]
-    min_size = 0
-    max_size = 1
-    desired_size = 0
+    min_size       = 0
+    max_size       = 1
+    desired_size   = 0
     disk_size      = 20
     labels = {
       NodeGroup = "loadtest"

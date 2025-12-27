@@ -39,11 +39,11 @@ variable "eks_node_groups" {
   description = "Map of EKS node group configurations"
   type = map(object({
     instance_types = list(string)
-    min_size      = number
-    max_size      = number
-    desired_size  = number
-    disk_size     = number
-    labels = optional(map(string), {})
+    min_size       = number
+    max_size       = number
+    desired_size   = number
+    disk_size      = number
+    labels         = optional(map(string), {})
     taints = optional(map(object({
       key    = string
       value  = string
