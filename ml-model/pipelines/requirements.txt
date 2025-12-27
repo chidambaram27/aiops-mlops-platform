@@ -1,0 +1,8 @@
+# ml-model/pipelines/requirements.txt
+kfp
+pandas
+numpy
+scikit-learn
+prometheus_api_client
+kubernetes
+pyyaml

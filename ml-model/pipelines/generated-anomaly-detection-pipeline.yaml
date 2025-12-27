@@ -1,0 +1,459 @@
+# PIPELINE DEFINITION
+# Name: anomaly-detection-training
+# Description: Train anomaly detection model from Prometheus metrics
+# Inputs:
+#    contamination: float [Default: 0.05]
+#    instance_ip: str [Default: '10.0.0.194:9100']
+#    n_estimators: int [Default: 100.0]
+#    prometheus_url: str [Default: 'http://kube-prometheus-stack-prometheus.kube-prometheus-stack.svc.cluster.local:9090']
+#    training_hours: int [Default: 2.0]
+components:
+  comp-deploy-inference-component:
+    executorLabel: exec-deploy-inference-component
+    inputDefinitions:
+      artifacts:
+        input_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+      parameters:
+        inference_service_name:
+          defaultValue: sklearn-iris
+          isOptional: true
+          parameterType: STRING
+        namespace:
+          defaultValue: default
+          isOptional: true
+          parameterType: STRING
+        service_account_name:
+          defaultValue: sa-minio-kserve
+          isOptional: true
+          parameterType: STRING
+        storage_uri_override:
+          defaultValue: ''
+          isOptional: true
+          parameterType: STRING
+  comp-engineer-features-component:
+    executorLabel: exec-engineer-features-component
+    inputDefinitions:
+      artifacts:
+        input_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+    outputDefinitions:
+      artifacts:
+        output_features:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-fetch-data-component:
+    executorLabel: exec-fetch-data-component
+    inputDefinitions:
+      parameters:
+        instance_ip:
+          parameterType: STRING
+        prometheus_url:
+          parameterType: STRING
+        training_hours:
+          parameterType: NUMBER_INTEGER
+    outputDefinitions:
+      artifacts:
+        output_data:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-train-model-component:
+    executorLabel: exec-train-model-component
+    inputDefinitions:
+      artifacts:
+        input_features:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+      parameters:
+        contamination:
+          defaultValue: 0.05
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+        n_estimators:
+          defaultValue: 100.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+    outputDefinitions:
+      artifacts:
+        output_metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        output_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+deploymentSpec:
+  executors:
+    exec-deploy-inference-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - deploy_inference_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kubernetes==30.1.0'\
+          \ 'pyyaml==6.0.2'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef deploy_inference_component(\n    input_model: Input[Model],\n\
+          \    inference_service_name: str = \"sklearn-iris\",\n    namespace: str\
+          \ = \"default\",\n    service_account_name: str = \"sa-minio-kserve\",\n\
+          \    storage_uri_override: str = \"\"  # Optional: override if auto-detection\
+          \ fails\n):\n    \"\"\"Deploy InferenceService to cluster using model artifact\
+          \ location\"\"\"\n    import os\n    import yaml\n    import json\n    from\
+          \ kubernetes import client, config\n    from kubernetes.client.rest import\
+          \ ApiException\n\n    # Load in-cluster config (Kubeflow pipelines run in-cluster)\n\
+          \    try:\n        config.load_incluster_config()\n    except:\n       \
+          \ # Fallback to kubeconfig if not in-cluster\n        config.load_kube_config()\n\
+          \n    # Get the storage URI from the model artifact\n    # In Kubeflow Pipelines\
+          \ v2, artifacts have metadata files with URI information\n    model_path\
+          \ = input_model.path\n    storage_uri = storage_uri_override.strip() if\
+          \ storage_uri_override else None\n\n    if not storage_uri:\n        # Method\
+          \ 1: Try to read from metadata.json (KFP v2 artifact metadata)\n       \
+          \ # Check multiple possible locations for metadata\n        metadata_paths\
+          \ = [\n            os.path.join(model_path, \"metadata.json\"),\n      \
+          \      os.path.join(model_path, \"..\", \"metadata.json\"),\n          \
+          \  os.path.join(os.path.dirname(model_path), \"metadata.json\"),\n     \
+          \   ]\n\n        for metadata_path in metadata_paths:\n            if os.path.exists(metadata_path):\n\
+          \                try:\n                    with open(metadata_path, 'r')\
+          \ as f:\n                        metadata = json.load(f)\n             \
+          \           # Try different metadata structures\n                      \
+          \  if \"outputs\" in metadata and \"artifacts\" in metadata[\"outputs\"\
+          ]:\n                            artifacts = metadata[\"outputs\"][\"artifacts\"\
+          ]\n                            if artifacts and len(artifacts) > 0:\n  \
+          \                              storage_uri = artifacts[0].get(\"uri\", \"\
+          \")\n                        elif \"uri\" in metadata:\n               \
+          \             storage_uri = metadata[\"uri\"]\n                        elif\
+          \ \"metadata\" in metadata and \"uri\" in metadata[\"metadata\"]:\n    \
+          \                        storage_uri = metadata[\"metadata\"][\"uri\"]\n\
+          \n                        if storage_uri:\n                            break\n\
+          \                except Exception as e:\n                    print(f\"Warning:\
+          \ Could not read {metadata_path}: {e}\")\n                    continue\n\
+          \n    # Method 2: Try to get from KFP environment variables\n    # In Kubeflow,\
+          \ the artifact URI might be available via environment\n    if not storage_uri:\n\
+          \        # Check for KFP-specific environment variables\n        kfp_uri\
+          \ = os.environ.get(\"KFP_ARTIFACT_URI\") or os.environ.get(\"ARTIFACT_URI\"\
+          )\n        if kfp_uri:\n            storage_uri = kfp_uri\n\n    # Method\
+          \ 3: Try to construct from model path and known patterns\n    # This is\
+          \ a fallback - the path structure in KFP can vary\n    if not storage_uri:\n\
+          \        artifact_base = os.environ.get(\"ARTIFACT_STORE\", \"s3://mlpipeline/v2\"\
+          )\n        # Try to extract information from the path\n        # Model paths\
+          \ in KFP often contain run/execution IDs\n        path_parts = model_path.split(\"\
+          /\")\n\n        # Look for patterns like: .../artifacts/pipeline-name/run-id/component/output\n\
+          \        try:\n            artifacts_idx = next(i for i, part in enumerate(path_parts)\
+          \ if part == \"artifacts\")\n            if artifacts_idx and artifacts_idx\
+          \ + 3 < len(path_parts):\n                # Reconstruct S3 path from local\
+          \ path structure\n                relative_path = \"/\".join(path_parts[artifacts_idx:])\n\
+          \                storage_uri = f\"{artifact_base}/{relative_path}\"\n  \
+          \      except (StopIteration, ValueError):\n            pass\n\n    # Final\
+          \ validation\n    if not storage_uri:\n        raise ValueError(\n     \
+          \       f\"Could not extract S3 URI from model artifact. \"\n          \
+          \  f\"Model path: {model_path}. \"\n            f\"Please provide storage_uri_override\
+          \ parameter or ensure artifact metadata is available.\"\n        )\n\n \
+          \   # Ensure we have a valid S3 URI\n    if not storage_uri.startswith(\"\
+          s3://\"):\n        # If it's a relative path, prepend the artifact store\n\
+          \        if not storage_uri.startswith(\"/\"):\n            artifact_base\
+          \ = os.environ.get(\"ARTIFACT_STORE\", \"s3://mlpipeline/v2\")\n       \
+          \     storage_uri = f\"{artifact_base}/{storage_uri.lstrip('/')}\"\n   \
+          \     else:\n            raise ValueError(f\"Invalid storage URI format:\
+          \ {storage_uri}. Expected S3 URI starting with 's3://'\")\n\n    print(f\"\
+          Deploying InferenceService with storageUri: {storage_uri}\")\n\n    # Create\
+          \ InferenceService manifest\n    inference_service = {\n        \"apiVersion\"\
+          : \"serving.kserve.io/v1beta1\",\n        \"kind\": \"InferenceService\"\
+          ,\n        \"metadata\": {\n            \"name\": inference_service_name,\n\
+          \            \"namespace\": namespace,\n            \"annotations\": {\n\
+          \                \"alb.ingress.kubernetes.io/scheme\": \"internet-facing\"\
+          ,\n                \"alb.ingress.kubernetes.io/target-type\": \"ip\"\n \
+          \           }\n        },\n        \"spec\": {\n            \"predictor\"\
+          : {\n                \"serviceAccountName\": service_account_name,\n   \
+          \             \"model\": {\n                    \"modelFormat\": {\n   \
+          \                     \"name\": \"sklearn\"\n                    },\n  \
+          \                  \"protocolVersion\": \"v2\",\n                    \"\
+          runtime\": \"kserve-sklearnserver\",\n                    \"storageUri\"\
+          : storage_uri\n                }\n            }\n        }\n    }\n\n  \
+          \  # Apply InferenceService using Kubernetes API\n    api_instance = client.CustomObjectsApi()\n\
+          \    group = \"serving.kserve.io\"\n    version = \"v1beta1\"\n    plural\
+          \ = \"inferenceservices\"\n\n    try:\n        # Check if InferenceService\
+          \ already exists\n        try:\n            existing = api_instance.get_namespaced_custom_object(\n\
+          \                group=group,\n                version=version,\n      \
+          \          namespace=namespace,\n                plural=plural,\n      \
+          \          name=inference_service_name\n            )\n            print(f\"\
+          InferenceService {inference_service_name} already exists. Updating...\"\
+          )\n            # Update existing\n            api_instance.patch_namespaced_custom_object(\n\
+          \                group=group,\n                version=version,\n      \
+          \          namespace=namespace,\n                plural=plural,\n      \
+          \          name=inference_service_name,\n                body=inference_service\n\
+          \            )\n            print(f\"\u2713 InferenceService {inference_service_name}\
+          \ updated successfully\")\n        except ApiException as e:\n         \
+          \   if e.status == 404:\n                # Create new InferenceService\n\
+          \                api_instance.create_namespaced_custom_object(\n       \
+          \             group=group,\n                    version=version,\n     \
+          \               namespace=namespace,\n                    plural=plural,\n\
+          \                    body=inference_service\n                )\n       \
+          \         print(f\"\u2713 InferenceService {inference_service_name} created\
+          \ successfully\")\n            else:\n                raise\n\n    except\
+          \ ApiException as e:\n        print(f\"Error deploying InferenceService:\
+          \ {e}\")\n        print(f\"Response body: {e.body}\")\n        raise\n\n\
+          \    print(f\"\u2713 InferenceService deployed: {inference_service_name}\"\
+          )\n    print(f\"  Storage URI: {storage_uri}\")\n    print(f\"  Namespace:\
+          \ {namespace}\")\n\n"
+        image: python:3.13-slim
+    exec-engineer-features-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - engineer_features_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==2.3.3'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.15.2'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef engineer_features_component(\n    input_data: Input[Dataset],\n\
+          \    output_features: Output[Dataset]\n):\n    \"\"\"Engineer features for\
+          \ ML\"\"\"\n    import pandas as pd\n\n    df = pd.read_csv(input_data.path)\n\
+          \    df['timestamp'] = pd.to_datetime(df['timestamp'])\n\n    df['rolling_mean']\
+          \ = df['cpu_usage'].rolling(window=5, min_periods=1).mean()\n    df['rolling_std']\
+          \ = df['cpu_usage'].rolling(window=5, min_periods=1).std().fillna(0)\n \
+          \   df['rate_of_change'] = df['cpu_usage'].diff().fillna(0)\n    df['hour']\
+          \ = df['timestamp'].dt.hour\n    df = df.dropna()\n\n    df.to_csv(output_features.path,\
+          \ index=False)\n    print(f\"\u2713 Created features for {len(df)} samples\"\
+          )\n\n"
+        image: python:3.13-slim
+    exec-fetch-data-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - fetch_data_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==2.3.3'\
+          \ 'prometheus-api-client==0.7.0' 'requests==2.31.0'  &&  python3 -m pip\
+          \ install --quiet --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef fetch_data_component(\n    prometheus_url: str,\n    training_hours:\
+          \ int,\n    instance_ip: str,\n    output_data: Output[Dataset]\n):\n  \
+          \  \"\"\"Fetch CPU metrics from Prometheus\"\"\"\n    import os\n    import\
+          \ pandas as pd\n    from datetime import datetime, timedelta\n    from prometheus_api_client\
+          \ import PrometheusConnect\n\n    prom = PrometheusConnect(url=prometheus_url,\
+          \ disable_ssl=True)\n    prom.check_prometheus_connection()\n\n    end_time\
+          \ = datetime.now()\n    start_time = end_time - timedelta(hours=training_hours)\n\
+          \    metrics_query = f'100 - (avg(rate(node_cpu_seconds_total{{mode=\"idle\"\
+          , instance=\"{instance_ip}\"}}[5m])) * 100)'\n\n    result = prom.custom_query_range(\n\
+          \        query=metrics_query,\n        start_time=start_time,\n        end_time=end_time,\n\
+          \        step='10s'\n    )\n\n    if not result:\n        raise ValueError(\"\
+          No data returned from Prometheus\")\n\n    timestamps = []\n    values =\
+          \ []\n    for sample in result[0]['values']:\n        timestamps.append(datetime.fromtimestamp(sample[0]).isoformat())\n\
+          \        values.append(float(sample[1]))\n\n    df = pd.DataFrame({'timestamp':\
+          \ timestamps, 'cpu_usage': values})\n    df.to_csv(output_data.path, index=False)\n\
+          \    print(f\"\u2713 Fetched {len(df)} data points\")\n\n"
+        image: python:3.13-slim
+    exec-train-model-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - train_model_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==2.3.3'\
+          \ 'numpy==2.3.5' 'scikit-learn==1.8.0'  &&  python3 -m pip install --quiet\
+          \ --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef train_model_component(\n    input_features: Input[Dataset],\n\
+          \    output_model: Output[Model],\n    output_metrics: Output[Metrics],\n\
+          \    contamination: float = 0.05,\n    n_estimators: int = 100\n):\n   \
+          \ \"\"\"Train IsolationForest model\"\"\"\n    import pickle\n    import\
+          \ json\n    import pandas as pd\n    import os\n    from sklearn.ensemble\
+          \ import IsolationForest\n\n    df = pd.read_csv(input_features.path)\n\
+          \    feature_columns = ['cpu_usage', 'rolling_mean', 'rolling_std', 'rate_of_change',\
+          \ 'hour']\n    X = df[feature_columns]\n\n    model = IsolationForest(\n\
+          \        contamination=contamination,\n        random_state=42,\n      \
+          \  n_estimators=n_estimators\n    )\n    model.fit(X)\n\n    predictions\
+          \ = model.predict(X)\n    anomalies = (predictions == -1).sum()\n    normal\
+          \ = (predictions == 1).sum()\n\n    # Save model\n    os.makedirs(output_model.path,\
+          \ exist_ok=True)\n    with open(f\"{output_model.path}/model.pkl\", 'wb')\
+          \ as f:\n        pickle.dump(model, f)\n\n    # Save metrics\n    metrics\
+          \ = {\n        'training_samples': len(X),\n        'normal_samples': int(normal),\n\
+          \        'anomalies_detected': int(anomalies),\n        'normal_percentage':\
+          \ float(normal / len(X) * 100),\n        'anomalies_percentage': float(anomalies\
+          \ / len(X) * 100)\n    }\n\n    with open(output_metrics.path, 'w') as f:\n\
+          \        json.dump(metrics, f)\n\n    print(f\"\u2713 Model trained: {normal}\
+          \ normal, {anomalies} anomalies\")\n\n"
+        image: python:3.13-slim
+pipelineInfo:
+  description: Train anomaly detection model from Prometheus metrics
+  name: anomaly-detection-training
+root:
+  dag:
+    tasks:
+      deploy-inference-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-deploy-inference-component
+        dependentTasks:
+        - train-model-component
+        inputs:
+          artifacts:
+            input_model:
+              taskOutputArtifact:
+                outputArtifactKey: output_model
+                producerTask: train-model-component
+          parameters:
+            inference_service_name:
+              runtimeValue:
+                constant: anomaly-detection
+            namespace:
+              runtimeValue:
+                constant: default
+            service_account_name:
+              runtimeValue:
+                constant: sa-minio-kserve
+        taskInfo:
+          name: deploy-inference-component
+      engineer-features-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-engineer-features-component
+        dependentTasks:
+        - fetch-data-component
+        inputs:
+          artifacts:
+            input_data:
+              taskOutputArtifact:
+                outputArtifactKey: output_data
+                producerTask: fetch-data-component
+        taskInfo:
+          name: engineer-features-component
+      fetch-data-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-fetch-data-component
+        inputs:
+          parameters:
+            instance_ip:
+              componentInputParameter: instance_ip
+            prometheus_url:
+              componentInputParameter: prometheus_url
+            training_hours:
+              componentInputParameter: training_hours
+        taskInfo:
+          name: fetch-data-component
+      train-model-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-train-model-component
+        dependentTasks:
+        - engineer-features-component
+        inputs:
+          artifacts:
+            input_features:
+              taskOutputArtifact:
+                outputArtifactKey: output_features
+                producerTask: engineer-features-component
+          parameters:
+            contamination:
+              componentInputParameter: contamination
+            n_estimators:
+              componentInputParameter: n_estimators
+        taskInfo:
+          name: train-model-component
+  inputDefinitions:
+    parameters:
+      contamination:
+        defaultValue: 0.05
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      instance_ip:
+        defaultValue: 10.0.0.194:9100
+        isOptional: true
+        parameterType: STRING
+      n_estimators:
+        defaultValue: 100.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      prometheus_url:
+        defaultValue: http://kube-prometheus-stack-prometheus.kube-prometheus-stack.svc.cluster.local:9090
+        isOptional: true
+        parameterType: STRING
+      training_hours:
+        defaultValue: 2.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.2
