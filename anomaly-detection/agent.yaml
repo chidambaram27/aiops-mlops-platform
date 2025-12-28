@@ -7,7 +7,7 @@ spec:
   type: Declarative
   description: "An agent specialized in detecting anomalies in cluster metrics using ML models and Prometheus data"
   declarative:
-    modelConfig: default-model-config
+    modelConfig: custom-model-config
     systemMessage: |
       You are an AI agent specialized in detecting anomalies in Kubernetes cluster metrics.
       You use the anomaly-detection-mcp server to:

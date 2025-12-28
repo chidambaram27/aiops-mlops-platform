@@ -10,3 +10,14 @@ prometheus-node-exporter:
     - operator: "Exists"
       effect: "NoExecute"
 
+prometheus:
+  prometheusSpec:
+    retention: 1d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+

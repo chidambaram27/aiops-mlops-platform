@@ -24,7 +24,7 @@ spec:
         - name: PROMETHEUS_URL
           value: "http://kube-prometheus-stack-prometheus.kube-prometheus-stack.svc.cluster.local:9090"
         - name: INFERENCE_SERVICE_URL
-          value: "http://anomaly-detection.default.svc.cluster.local"
+          value: "http://anomaly-detection-predictor.default.svc.cluster.local"
         - name: MODEL_NAME
           value: "anomaly-detection"
         - name: DEFAULT_INSTANCE_IP
