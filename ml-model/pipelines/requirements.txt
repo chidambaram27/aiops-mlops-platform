@@ -1,8 +1,8 @@
 # ml-model/pipelines/requirements.txt
-kfp
-pandas
-numpy
-scikit-learn
-prometheus_api_client
-kubernetes
-pyyaml
+kfp==2.15.2
+pandas==2.3.3
+numpy==2.3.5
+scikit-learn==1.8.0
+prometheus_api_client==0.7.0
+kubernetes==30.1.0
+pyyaml==6.0.2
