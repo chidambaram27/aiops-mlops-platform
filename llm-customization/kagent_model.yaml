@@ -1,0 +1,13 @@
+---
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: custom-model-config
+  namespace: kagent
+spec:
+  apiKeySecret: kagent-my-provider
+  apiKeySecretKey: PROVIDER_API_KEY
+  model: ajay2708/functiongemma-270m-it.Q4_K_M.gguf
+  provider: OpenAI
+  openAI:
+    baseUrl: "http://functiongemma.default.svc.cluster.local:8000"

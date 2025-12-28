@@ -1,0 +1,78 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: functiongemma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: functiongemma
+  template:
+    metadata:
+      labels:
+        app: functiongemma
+    spec:
+      # nodeSelector:
+      #   NodeGroup: vllm
+      containers:
+        - name: llama
+          image: ghcr.io/ggml-org/llama.cpp:server
+          env:
+            - name: HF_HOME
+              value: "/models"  # optional, sets cache path
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token-secret
+                  key: token  # only if private model
+          args:
+            - "-hf"
+            - "ajay2708/functiongemma-270m-it.Q4_K_M.gguf:Q4_K_M"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8000"
+            - "-t"
+            - "4"
+            - "--metrics"
+          ports:
+            - containerPort: 8000
+          # resources:
+          #   requests:
+          #     cpu: "2"
+          #     memory: "2Gi"
+          #   limits:
+          #     cpu: "4"
+          #     memory: "4Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: functiongemma
+  labels:
+    app: functiongemma
+spec:
+  selector:
+    app: functiongemma
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  type: ClusterIP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: functiongemma
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: functiongemma
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
