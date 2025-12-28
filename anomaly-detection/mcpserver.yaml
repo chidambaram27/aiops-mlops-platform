@@ -1,0 +1,11 @@
+apiVersion: kagent.dev/v1alpha2
+kind: RemoteMCPServer
+metadata:
+  name: anomaly-detection-mcp
+  namespace: kagent
+spec:
+  url: http://anomaly-detection-tool.default.svc.cluster.local:8080/mcp
+  protocol: STREAMABLE_HTTP
+  timeout: 30s
+  sseReadTimeout: 5m0s
+  description: "Anomaly Detection MCP Server"

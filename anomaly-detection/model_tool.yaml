@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
       - name: tool
-        image: chidambaram27/anomaly-detection-tool:v1  # Update with your registry
+        image: chidambaram27/anomaly-detection-tool:v2  # Update with your registry
         imagePullPolicy: Always
         env:
         - name: PROMETHEUS_URL

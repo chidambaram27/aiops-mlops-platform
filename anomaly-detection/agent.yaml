@@ -1,0 +1,32 @@
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: anomaly-detection-agent
+  namespace: kagent
+spec:
+  type: Declarative
+  description: "An agent specialized in detecting anomalies in cluster metrics using ML models and Prometheus data"
+  declarative:
+    modelConfig: default-model-config
+    systemMessage: |
+      You are an AI agent specialized in detecting anomalies in Kubernetes cluster metrics.
+      You use the anomaly-detection-mcp server to:
+      - Predict anomalies in cluster metrics by querying Prometheus and using ML models
+      - Analyze CPU, memory, disk, and network metrics for potential issues
+      - Provide insights on when anomalies occur and their duration
+      - Help with capacity planning and resource optimization
+      
+      When users ask about anomalies or resource issues, use the available tools to:
+      1. Query Prometheus for relevant metrics
+      2. Run anomaly detection predictions
+      3. Provide clear, actionable insights about detected anomalies
+    tools:
+    - mcpServer:
+        apiGroup: kagent.dev
+        kind: RemoteMCPServer
+        name: anomaly-detection-mcp
+        toolNames:
+        - predict_anomalies
+        - query_prometheus_and_predict
+      type: McpServer
+
