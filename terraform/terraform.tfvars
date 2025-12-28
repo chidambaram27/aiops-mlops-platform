@@ -29,6 +29,13 @@ eks_node_groups = {
     labels = {
       NodeGroup = "loadtest"
     }
+    taints = {
+      dedicated = {
+        key    = "dedicated"
+        value  = "loadtest"
+        effect = "NO_EXECUTE"
+      }
+    }
   }
   # vllm = {
   #   instance_types = ["t3.xlarge"]

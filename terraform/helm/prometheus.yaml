@@ -1,0 +1,12 @@
+# Values file for kube-prometheus-stack
+# Configured to allow daemonset to run on all nodes regardless of taints
+
+prometheus-node-exporter:
+  tolerations:
+    - operator: "Exists"
+      effect: "NoSchedule"
+    - operator: "Exists"
+      effect: "PreferNoSchedule"
+    - operator: "Exists"
+      effect: "NoExecute"
+

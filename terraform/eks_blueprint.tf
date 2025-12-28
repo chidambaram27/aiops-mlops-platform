@@ -20,8 +20,18 @@ module "eks_blueprints_addons" {
   enable_aws_load_balancer_controller = true
   enable_cert_manager                 = true
 
-  enable_kube_prometheus_stack = true
   enable_metrics_server        = true
+  enable_kube_prometheus_stack = true
+
+  kube_prometheus_stack = {
+    name          = "kube-prometheus-stack"
+    chart_version = "48.2.3"
+    repository    = "https://prometheus-community.github.io/helm-charts"
+    namespace     = "kube-prometheus-stack"
+    values        = [templatefile("${path.module}/helm/prometheus.yaml", {})]
+  }
+
+  
 
   enable_cluster_autoscaler = true
 
