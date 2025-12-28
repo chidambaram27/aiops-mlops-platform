@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dummy-pod
+spec:
+  nodeSelector:
+    NodeGroup: loadtest
+  tolerations:
+  - key: "dedicated"
+    operator: "Exists"
+    effect: "NoExecute"
+  containers:
+  - name: app
+    image: nginx
+    

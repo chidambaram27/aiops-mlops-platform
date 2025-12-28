@@ -1,0 +1,75 @@
+# kagent/kagent-model-tool.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anomaly-detection-tool
+  namespace: default
+  labels:
+    app: anomaly-detection-tool
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: anomaly-detection-tool
+  template:
+    metadata:
+      labels:
+        app: anomaly-detection-tool
+    spec:
+      containers:
+      - name: tool
+        image: chidambaram27/anomaly-detection-tool:v1  # Update with your registry
+        imagePullPolicy: Always
+        env:
+        - name: PROMETHEUS_URL
+          value: "http://kube-prometheus-stack-prometheus.kube-prometheus-stack.svc.cluster.local:9090"
+        - name: INFERENCE_SERVICE_URL
+          value: "http://anomaly-detection.default.svc.cluster.local"
+        - name: MODEL_NAME
+          value: "anomaly-detection"
+        - name: DEFAULT_INSTANCE_IP
+          value: "10.0.1.244:9100"
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        # FastMCP HTTP server endpoint is at /mcp
+        # Health checks can use TCP or the MCP endpoint
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: anomaly-detection-tool
+  namespace: default
+  labels:
+    app: anomaly-detection-tool
+spec:
+  type: ClusterIP
+  selector:
+    app: anomaly-detection-tool
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
