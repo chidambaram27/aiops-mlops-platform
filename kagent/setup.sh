@@ -9,12 +9,12 @@ helm install kagent-crds oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds \
 export GEMINI_API_KEY=""
 
 # install kagent resources
-helm install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent 
+helm upgrade --install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
     --namespace kagent \
     --set providers.default=gemini \
     --set providers.gemini.apiKey=$GEMINI_API_KEY \
     --set grafana-mcp.grafana.apiKey=$GRAFANA_API_KEY \
-    -f ./kagent/helm-values.yaml
+    -f helm-values.yaml
 
 
 kubectl port-forward -n kagent svc/kagent-ui 8080:8080 > /dev/null 2>&1 & 
