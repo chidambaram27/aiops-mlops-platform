@@ -13,8 +13,13 @@ spec:
       labels:
         app: functiongemma
     spec:
-      # nodeSelector:
-      #   NodeGroup: vllm
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "vllm"
+          effect: "NoExecute"
+      nodeSelector:
+        NodeGroup: vllm
       containers:
         - name: llama
           image: ghcr.io/ggml-org/llama.cpp:server
@@ -28,7 +33,8 @@ spec:
                   key: token  # only if private model
           args:
             - "-hf"
-            - "ajay2708/functiongemma-270m-it.Q4_K_M.gguf:Q4_K_M"
+            # - "ajay2708/functiongemma-270m-it.Q4_K_M.gguf:Q4_K_M"
+            - "unsloth/Qwen3-0.6B-GGUF:Q4_K_M"
             - "--host"
             - "0.0.0.0"
             - "--port"

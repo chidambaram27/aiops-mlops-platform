@@ -37,17 +37,21 @@ eks_node_groups = {
       }
     }
   }
-  # vllm = {
-  #   instance_types = ["t3.xlarge"]
-  #   min_size       = 0
-  #   max_size       = 1
-  #   desired_size   = 0
-  #   disk_size      = 60
-  #   labels = {
-  #     NodeGroup = "vllm"
-  #   }
-  #   instance_tags = {
-  #     Workload = "vllm"
-  #   }
-  # }
+  vllm = {
+    instance_types = ["t3.xlarge"]
+    min_size       = 0
+    max_size       = 1
+    desired_size   = 0
+    disk_size      = 60
+    labels = {
+      NodeGroup = "vllm"
+    }
+    taints = {
+      dedicated = {
+        key    = "dedicated"
+        value  = "vllm"
+        effect = "NO_EXECUTE"
+      }
+    }
+  }
 }
